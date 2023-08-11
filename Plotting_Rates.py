@@ -4,7 +4,7 @@ AtChem2 output files"""
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import cm
-from read_output.read_atchem2_output import rate_df
+from read_output import rate_df
 import sys
 import os
 import numpy as np
