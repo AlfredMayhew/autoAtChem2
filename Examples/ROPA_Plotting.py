@@ -5,20 +5,11 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import cm
 from autoAtChem2.read_output import rate_df
+from autoAtChem2.utilities import string_to_bool
 import sys
 import os
 import numpy as np
 from datetime import date
-
-#define functions
-def string_to_bool(string):
-    """function to evaluate strings of 'True' and 'False' into bools"""
-    if string.casefold() == "True".casefold():
-        return True
-    elif string.casefold() == "False".casefold():
-        return False
-    else:
-        raise Exception("Provided bool does not match True or False")
 
 #read in arguments from command line
 args=sys.argv
