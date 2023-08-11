@@ -89,7 +89,7 @@ def write_config(atchem2_path, initial_concs={}, spec_constrain={},
     
     
 def write_model_params(atchem2_path, nsteps, model_tstep, tstart, day, month,
-                       year):
+                       year, lat=51.51, lon=0.31):
     """Write to model parameters file"""
     model_params_lines=f"""{nsteps}			number of steps
     {model_tstep}			step size (seconds)
@@ -98,8 +98,8 @@ def write_model_params(atchem2_path, nsteps, model_tstep, tstart, day, month,
     {model_tstep}			rates output step size (seconds)
     {tstart}			model start time (seconds)
     0			jacobian output step size (seconds)
-    39.551			latitude (degrees)
-    0.462			longitude (degrees)
+    {lat}			latitude (degrees)
+    {lon}			longitude (degrees)
     {day:02d}			day
     {month:02d}			month
     {year:04d}			year
@@ -128,8 +128,21 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                     spec_constant={}, env_constrain={}, jfac_constrain = [(0,1)], 
                     env_vals = {"TEMP":"298","PRESS":"1013",
                                 "RH":"50","DILUTE":"NOTUSED"},
-                    spec_output=[], spec_inject = [], inject_targets = {}):
-    """Configures, builds and runs a specified AtChem2 model"""
+                    spec_output=[], spec_inject = [], inject_targets = {}, 
+                    lat=51.51, lon=0.31):
+    """Configures, builds and runs a specified AtChem2 model. 
+    
+    If spec_inject and inject_targets are specified, then a series of models 
+    will be run to simulate a chamber experiments with the introduction of 
+    species into the chamber mid-experiment. 
+        spec_inject should be a dictionary where keys = species to be injected, 
+        and values = a list of times at which injectionsshould occur. e.g. 
+        {"C5H8":[36000, 43200], "NOx":[32400, 43200]} 
+        
+        inject_targets should be a dictionary where keys = species to be injected
+        and values = a list of target concentrations at each corresponding 
+        time point in spec_inject. e.g. {"C5H8":[3E10, 2E10], 
+                                         "NOx":[1E11, 1E11]} """
     #dataframe to store model outputs
     stitched_output = pd.DataFrame(dtype=float)
     #dataframes to store rate outputs
@@ -157,7 +170,7 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
         nsteps=int(model_length/step_size)
 
         write_model_params(new_atchem_path, nsteps, step_size, t_start, day, 
-                           month, year)
+                           month, year, lat=lat, lon=lon)
         
         #build and run the model
         build_model(new_atchem_path, new_mech_path)
@@ -244,7 +257,7 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                 nsteps=int(model_length/step_size)
                        
                 write_model_params(new_atchem_path, nsteps, step_size, inj_time, day, 
-                                   month, year)
+                                   month, year, lat=lat, lon=lon)
                 
                 #build and run the model
                 build_model(new_atchem_path, new_mech_path)
