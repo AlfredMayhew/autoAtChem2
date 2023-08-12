@@ -180,19 +180,19 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
         output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
                              index_col=0, delim_whitespace=True)
         
-        stitched_output = stitched_output.append(output)
+        stitched_output = pd.concat([stitched_output, output])
         
         loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
                                   delim_whitespace=True)
         prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
                                   delim_whitespace=True)
         
-        stitched_loss_rates = stitched_loss_rates.append(loss_output)
-        stitched_prod_rates = stitched_prod_rates.append(prod_output)
+        stitched_loss_rates = pd.concat([stitched_loss_rates, loss_output])
+        stitched_prod_rates = pd.concat([stitched_prod_rates, prod_output])
 
         env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
                                  index_col=0, delim_whitespace=True)
-        stitched_env = stitched_env.append(env_output)
+        stitched_env = pd.concat([stitched_env, env_output])
         
         #remove temporary AtChem2 copy
         os.system(f"rm -r {new_atchem_path}")
@@ -279,10 +279,10 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                 prod_output = prod_output.loc[prod_output["time"]!=(next_injtime+step_size),:]
                 env_output = env_output.iloc[1:-1,:]
                 
-                stitched_output = stitched_output.append(output)
-                stitched_loss_rates = stitched_loss_rates.append(loss_output)
-                stitched_prod_rates = stitched_prod_rates.append(prod_output)
-                stitched_env = stitched_env.append(env_output)
+                stitched_output = pd.concat([stitched_output, output])
+                stitched_loss_rates = pd.concat([stitched_loss_rates, loss_output])
+                stitched_prod_rates = pd.concat([stitched_prod_rates, prod_output])
+                stitched_env = pd.concat([stitched_env, env_output])
         
             #remove temporary AtChem2 copy
             os.system(f"rm -r {new_atchem_path}")
