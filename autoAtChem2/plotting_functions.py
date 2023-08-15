@@ -6,82 +6,72 @@ from datetime import timedelta
 from .reading_concentrations import conc_to_units
 import math
 
-def make_axis(model_data, measured_data, ax, name, units, env_df, cconv, 
-              injections = None):
-    """Plots measured and modelled data from two Series objects."""
-    #convert units of modelled data
-    model_data = conc_to_units(model_data, units, cconv)
+def plot_species(conc_df, species, nrows = 1, ncols = None, units = None, 
+                 cconv = 2.45E19, title=None, ax_size = 5, convert_xaxis = True,
+                 xaxis_units = "UTC", **kwargs):
+    """Creates a multi-panel figure with a selection of model time series 
+    plotted on separate axes."""
+    #check that ncols*nrows is less than the number of species requested
+    nspecs = len(species)    
+    if ncols and nrows:
+        if ncols*nrows < nspecs:
+            raise Exception(f"""Provided number of rows and columns 
+                            ({nrows} and {ncols}) does not accommodate the 
+                            requested number of species ({nspecs}).
+                            You can leave either ncols or nrows unassigned
+                            to automatically produce the required number of axes.""")
+    #calculate the number of rows or cols (depending on which hasn't been provided)
+    if nrows and not ncols:
+        ncols = math.ceil(nspecs/nrows)
+    elif ncols and not nrows:
+        nrows = math.ceil(nspecs/ncols)
+    elif not nrows and not ncols:
+        raise Exception("""nrows and ncols cannot both be left unassigned.""")
     
-    #get a datetime index for better plotting
-    model_data_df_index = [pd.to_datetime(str(timedelta(seconds=x))) for x in model_data.index]
-    if not measured_data.empty:
-        measured_data_df_index = [pd.to_datetime(str(timedelta(seconds=x))) for x in measured_data.index]
-        ax.plot(measured_data_df_index, measured_data, ".", c="rebeccapurple", 
-                label=f"Measured {name}")
-        
-    ax.plot(model_data_df_index, model_data, c="firebrick", 
-            label=f"Modelled {name}")
+    #check that the units list is equal in length to the species list (if 
+    #assigned at all)
+    if units:
+        if not (len(species) == len(units)):
+            raise Exception("""Number of units provided does not match the number
+                            of species ({len(units)} vs. {len(species)}). Either
+                            assign a unit for each species or leave 'units' 
+                            unassigned to plot in the original model units.""")
     
-    #plot injections if specified
-    if injections:      
-        for t in injections:
-            ax.axvline(pd.to_datetime(str(timedelta(seconds=t))),ls="dotted",c="k")
-        
-    
-    time_form = DateFormatter("%H:%M")
-    ax.xaxis.set_major_formatter(time_form)
-    
-    ax.set_xlabel("Time (UTC)")
-    ax.set_ylabel(f"{name} ({units})")
-    
-    ax.legend()
-    
-def plot_species(model_df, df_dict, trans_dict, specs_to_plot, cconv, title=None, 
-                 injections = None):
-    """Makes a plt figure with the requested species plotted"""
-    nspecs = len(specs_to_plot)    
-    fig = plt.Figure(figsize = (10, math.ceil(nspecs/2)*5))
-        
-    #get start and end of model to trim the measured data
-    tstart = model_df.index[0]
-    tend = model_df.index[-1]
-    
-    for i,spec in enumerate(specs_to_plot):
-        try:
-            #read measured data
-            name = trans_dict[spec][0]
-            meas_series = df_dict[trans_dict[spec][1]][name]
-            
-            closest_tstart = min(meas_series.index, key=lambda x:abs(x-tstart))
-            closest_tend = min(meas_series.index, key=lambda x:abs(x-tend))
-            
-            meas_series = df_dict[trans_dict[spec][1]][name].loc[closest_tstart:closest_tend].dropna()
-            
-            #get units
-            units = trans_dict[spec][2]
-    
-        except KeyError:
-            meas_series = pd.Series()
-            units = "ppt"
-            
+    fig = plt.Figure(figsize = (5*ncols, 5*nrows))
+
+    for i,spec in enumerate(species):            
         #get model data
         if spec != "NOx":
-            model_series = model_df[spec]
+            model_series = conc_df[spec]
         else:
-            model_series = model_df[["NO","NO2"]].sum(axis=1)
-
+            model_series = conc_df[["NO","NO2"]].sum(axis=1)
+        
+        #convert the units
+        if units:
+            sel_units = units[i]
+            model_series = conc_to_units(model_series, sel_units,
+                                         concconversionfactor=cconv)
+        else:
+            sel_units = "molecules/cm3"
+            
+        if convert_xaxis:
+            times = pd.to_datetime(model_series.index, unit="s")
+        else:
+            times = model_series.index.to_list()
+        
         #plot        
-        ax = fig.add_subplot(math.ceil(nspecs/2),2,i+1)
-        if injections and (spec in injections.keys()):
-            make_axis(model_series,meas_series, ax, spec, units, 
-                      df_dict["Monitors_Env"], cconv, injections[spec])
-        else:
-            make_axis(model_series,meas_series, ax, spec, units, 
-                      df_dict["Monitors_Env"], cconv)
+        ax = fig.add_subplot(nrows,ncols,i+1)
+        ax.plot(times, model_series, **kwargs)
+        
+        if convert_xaxis:
+            ax.xaxis.set_major_formatter(DateFormatter('%H:%M'))
+                
+        ax.set_xlabel(f"Time ({xaxis_units})")
+        ax.set_ylabel(f"{spec} ({sel_units})")
     
     if title:
         fig.suptitle(title)
-    
+
     fig.tight_layout()
         
     return fig
