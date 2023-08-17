@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 from datetime import datetime
+import tempfile
 
 def wipe_file(file_path):
     open(file_path, 'w').close()
@@ -128,82 +129,104 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                     spec_constant={}, env_constrain={}, jfac_constrain = [(0,1)], 
                     env_vals = {"TEMP":"298","PRESS":"1013",
                                 "RH":"50","DILUTE":"NOTUSED"},
-                    spec_output=[], spec_inject = [], inject_targets = {}, 
-                    lat=51.51, lon=0.31):
-    """Configures, builds and runs a specified AtChem2 model. 
+                    spec_output=[], lat=51.51, lon=0.31):
+    """Configures, builds and runs a specified AtChem2 model. """
     
-    If spec_inject and inject_targets are specified, then a series of models 
+    #copy atchem2 directory
+    new_atchem_path = f"{tempfile.gettempdir()}/AtChem2_{year:04d}-{month:02d}-{day:02d}_{datetime.now()}".replace(' ','_')
+    os.system(f"cp -r {atchem2_path} {new_atchem_path}")
+    #copy the mechanism to the AtChem directory
+    new_mech_path = f"{new_atchem_path}/model/{mech_path.split('/')[-1]}"
+    os.system(f"cp {mech_path} {new_mech_path}")
+    
+    #write config files using data passed
+    write_config(new_atchem_path, initial_concs=initial_concs, 
+                 spec_constrain=spec_constrain, spec_constant=spec_constant,
+                 env_constrain=env_constrain, env_vals=env_vals, jfac_constrain = jfac_constrain,
+                 spec_output=spec_output)
+    
+    #change model parameters
+    model_length=t_end-t_start
+    nsteps=int(model_length/step_size)
+
+    write_model_params(new_atchem_path, nsteps, step_size, t_start, day, 
+                       month, year, lat=lat, lon=lon)
+    
+    #build and run the model
+    build_model(new_atchem_path, new_mech_path)
+    run_model(new_atchem_path)
+    
+    #read the model output and append it to the stitched df
+    output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
+                         index_col=0, delim_whitespace=True)
+    
+    
+    loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
+                              delim_whitespace=True)
+    prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
+                              delim_whitespace=True)
+    
+
+    env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
+                             index_col=0, delim_whitespace=True)
+    
+    #remove temporary AtChem2 copy
+    os.system(f"rm -r {new_atchem_path}")
+    return (output, loss_output, prod_output, env_output)
+
+                        
+def write_build_run_injections(atchem2_path, mech_path, day, month, year, t_start, t_end, 
+                               step_size,initial_concs={}, spec_constrain={}, 
+                               spec_constant={}, env_constrain={}, jfac_constrain = [(0,1)], 
+                               env_vals = {"TEMP":"298","PRESS":"1013",
+                                           "RH":"50","DILUTE":"NOTUSED"},
+                               spec_output=[], injection_dict = {}, lat=51.51, 
+                               lon=0.31):
+    """Configures, builds and runs a specified AtChem2 model including 
+    instantaneous increases in concentrations of certain species. 
+    
+    If spec_inject is specified, then a series of models 
     will be run to simulate a chamber experiments with the introduction of 
     species into the chamber mid-experiment. 
-        spec_inject should be a dictionary where keys = species to be injected, 
-        and values = a list of times at which injectionsshould occur. e.g. 
-        {"C5H8":[36000, 43200], "NOx":[32400, 43200]} 
-        
-        inject_targets should be a dictionary where keys = species to be injected
-        and values = a list of target concentrations at each corresponding 
-        time point in spec_inject. e.g. {"C5H8":[3E10, 2E10], 
-                                         "NOx":[1E11, 1E11]} """
-    #dataframe to store model outputs
-    stitched_output = pd.DataFrame(dtype=float)
-    #dataframes to store rate outputs
-    stitched_loss_rates = pd.DataFrame(dtype=float)
-    stitched_prod_rates = pd.DataFrame(dtype=float)
-    #dataframe to store environment variables
-    stitched_env = pd.DataFrame(dtype=float)
+    spec_inject should be a dictionary where keys = species to be injected, 
+    and values = second dictionary of times at which injections occur and the
+    concentration at the corresponding time e.g. 
+    {"C5H8":{36000 : 3E10, 43200 : 2E10}, "NOx":{32400 : 1E11, 43200 : 1E11}} 
+    """
     
-    if (not inject_targets) and (not spec_inject): #if species injections ARE NOT needed
-        #copy atchem2 directory
-        new_atchem_path = f"{atchem2_path}_{year:04d}-{month:02d}-{day:02d}_{datetime.now()}".replace(' ','_')
-        os.system(f"cp -r {atchem2_path} {new_atchem_path}")
-        #copy the mechanism to the AtChem directory
-        new_mech_path = f"{new_atchem_path}/model/{mech_path.split('/')[-1]}"
-        os.system(f"cp {mech_path} {new_mech_path}")
-        
-        #write config files using data passed
-        write_config(new_atchem_path, initial_concs=initial_concs, 
-                     spec_constrain=spec_constrain, spec_constant=spec_constant,
-                     env_constrain=env_constrain, env_vals=env_vals, jfac_constrain = jfac_constrain,
-                     spec_output=spec_output)
-        
-        #change model parameters
-        model_length=t_end-t_start
-        nsteps=int(model_length/step_size)
+    if not injection_dict: #if species injections ARE NOT needed
+        return write_build_run(atchem2_path, mech_path, day, month, year, 
+                               t_start, t_end, step_size ,initial_concs, 
+                               spec_constrain, spec_constant, 
+                               env_constrain, jfac_constrain, env_vals,
+                               spec_output, lat, lon)
 
-        write_model_params(new_atchem_path, nsteps, step_size, t_start, day, 
-                           month, year, lat=lat, lon=lon)
-        
-        #build and run the model
-        build_model(new_atchem_path, new_mech_path)
-        run_model(new_atchem_path)
-        
-        #read the model output and append it to the stitched df
-        output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
-                             index_col=0, delim_whitespace=True)
-        
-        stitched_output = pd.concat([stitched_output, output])
-        
-        loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
-                                  delim_whitespace=True)
-        prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
-                                  delim_whitespace=True)
-        
-        stitched_loss_rates = pd.concat([stitched_loss_rates, loss_output])
-        stitched_prod_rates = pd.concat([stitched_prod_rates, prod_output])
-
-        env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
-                                 index_col=0, delim_whitespace=True)
-        stitched_env = pd.concat([stitched_env, env_output])
-        
-        #remove temporary AtChem2 copy
-        os.system(f"rm -r {new_atchem_path}")
-        return (stitched_output,stitched_loss_rates,stitched_prod_rates,stitched_env)
-
-    elif (inject_targets) and (spec_inject): #if species injections ARE needed
+    else: #if species injections ARE needed
         #go through each injection in time order and run that portion of the model
        
-        for i,(inj_time,specs) in enumerate(spec_inject):
+        #dataframe to store model outputs
+        stitched_output = pd.DataFrame(dtype=float)
+        #dataframes to store rate outputs
+        stitched_loss_rates = pd.DataFrame(dtype=float)
+        stitched_prod_rates = pd.DataFrame(dtype=float)
+        #dataframe to store environment variables
+        stitched_env = pd.DataFrame(dtype=float)
+        
+       
+        #make a list of ordered injection times to iterate through
+        ordered_times = [list(v.keys()) for v in injection_dict.values()]
+        ordered_times = [item for sublist in ordered_times for item in sublist]
+        ordered_times = list(set(ordered_times)) #remove duplicates
+        ordered_times.sort()
+        
+        #remove any injections outside of the start and end times and add the start
+        #time to the injection list
+        ordered_times = [x for x in ordered_times if (x > t_start) and (x < t_end)]
+        ordered_times.insert(0, t_start)
+        
+        for i,inj_time in enumerate(ordered_times):
             #copy atchem2 directory
-            new_atchem_path = f"{atchem2_path}_{year:04d}-{month:02d}-{day:02d}_{i}_{datetime.now()}".replace(' ','_')
+            new_atchem_path = f"{tempfile.gettempdir()}/AtChem2_{year:04d}-{month:02d}-{day:02d}_{i}_{datetime.now()}".replace(' ','_')
             os.system(f"cp -r {atchem2_path} {new_atchem_path}")
             #copy the mechanism to the AtChem directory
             new_mech_path = f"{new_atchem_path}/model/{mech_path.split('/')[-1]}"
@@ -216,78 +239,79 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                          spec_output=spec_output)
 
             
-            if (i != (len(spec_inject)-1)): #if this isn't the first or last iteration then adjust
-                         #the starting concentrations to match the end of the last model run
-                next_injtime = spec_inject[i+1][0]
+            if (i != (len(ordered_times)-1)): #if this isn't the last iteration then 
+            #calculate the next injection time, otherwise the next injection time
+            #is just the model end time
+                next_injtime = ordered_times[i+1]
+            else:
+                next_injtime = t_end
                 
-                if i != 0: #if it isn't the first run, then adjust concentrations based on required injections
-                #rewrite initial concentrations file to match the model output from
-                #the previous model run
-                    new_start_concs = stitched_output.loc[min(stitched_output.index, key=lambda x:abs(x-inj_time))] #species concentrations at the closest time to the previous injection time
-                    
-                    #change the start concentrations for species injected this time
-                    for s in specs:
-                        if s != "NOx":
-                            new_start_concs.loc[s] = inject_targets[s][inj_time]
-                        else:
-                            #for the NOx constraint, calculate the NO/NO2 ratio 
-                            #and change NOx such that the ratio is preserved.
-                            old_no = new_start_concs.loc["NO"]
-                            old_no2 = new_start_concs.loc["NO2"]
-                            
-                            old_total_nox = old_no + old_no2
-                            nox_deficit = inject_targets[s][inj_time] - old_total_nox                             
-                            
-                            new_no = (old_no + (nox_deficit*(old_no/old_total_nox)))
-                            new_no2 = (old_no2 + (nox_deficit*(old_no2/old_total_nox)))
-                            
-                            new_start_concs.loc["NO"] = new_no
-                            new_start_concs.loc["NO2"] = new_no2
-                    
-                    init_lines = [f"{k} {v}\n" for k,v in new_start_concs.to_dict().items()]
-                    
-                    with open(new_atchem_path+"/model/configuration/initialConcentrations.config",
-                              "w") as file:
-                        file.writelines(init_lines)
+            if i != 0: #if it isn't the first run, then adjust concentrations based on required injections
+            #rewrite initial concentrations file to match the model output from
+            #the previous model run
+                new_start_concs = stitched_output.loc[min(stitched_output.index, key=lambda x:abs(x-inj_time))] #species concentrations at the closest time to the previous injection time
                 
+                #change the start concentrations for species injected this time
+                specs = [k for k,v in injection_dict.items() if inj_time in v.keys()]
+                for s in specs:
+                    if s != "NOx":
+                        new_start_concs.loc[s] = injection_dict[s][inj_time]
+                    else:
+                        #for the NOx constraint, calculate the NO/NO2 ratio 
+                        #and change NOx such that the ratio is preserved.
+                        old_no = new_start_concs.loc["NO"]
+                        old_no2 = new_start_concs.loc["NO2"]
+                        
+                        old_total_nox = old_no + old_no2
+                        nox_deficit = injection_dict[s][inj_time] - old_total_nox                             
+                        
+                        new_no = (old_no + (nox_deficit*(old_no/old_total_nox)))
+                        new_no2 = (old_no2 + (nox_deficit*(old_no2/old_total_nox)))
+                        
+                        new_start_concs.loc["NO"] = new_no
+                        new_start_concs.loc["NO2"] = new_no2
+                
+                init_lines = [f"{k} {v}\n" for k,v in new_start_concs.to_dict().items()]
+                
+                with open(new_atchem_path+"/model/configuration/initialConcentrations.config",
+                          "w") as file:
+                    file.writelines(init_lines)
             
-                #rewrite model parameters file to only run for the length of the 
-                #injection of interest
-                model_length=(next_injtime+step_size) - inj_time
-                nsteps=int(model_length/step_size)
-                       
-                write_model_params(new_atchem_path, nsteps, step_size, inj_time, day, 
-                                   month, year, lat=lat, lon=lon)
-                
-                #build and run the model
-                build_model(new_atchem_path, new_mech_path)
-                run_model(new_atchem_path)
-                
-                #read the model output and append it to the stitched df
-                output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
+        
+            #rewrite model parameters file to only run for the length of the 
+            #injection of interest
+            model_length=(next_injtime+step_size) - inj_time
+            nsteps=int(model_length/step_size)
+                   
+            write_model_params(new_atchem_path, nsteps, step_size, inj_time, day, 
+                               month, year, lat=lat, lon=lon)
+            
+            #build and run the model
+            build_model(new_atchem_path, new_mech_path)
+            run_model(new_atchem_path)
+            
+            #read the model output and append it to the stitched df
+            output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
+                                 index_col=0, delim_whitespace=True)
+            loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
+                                      delim_whitespace=True)
+            prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
+                                      delim_whitespace=True)  
+            env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
                                      index_col=0, delim_whitespace=True)
-                loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
-                                          delim_whitespace=True)
-                prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
-                                          delim_whitespace=True)  
-                env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
-                                         index_col=0, delim_whitespace=True)
-                
-                #trim off the last value (this will be replaced by the next model run)
-                output = output.iloc[1:-1,:]
-                loss_output = loss_output.loc[loss_output["time"]!=(next_injtime+step_size),:]
-                prod_output = prod_output.loc[prod_output["time"]!=(next_injtime+step_size),:]
-                env_output = env_output.iloc[1:-1,:]
-                
-                stitched_output = pd.concat([stitched_output, output])
-                stitched_loss_rates = pd.concat([stitched_loss_rates, loss_output])
-                stitched_prod_rates = pd.concat([stitched_prod_rates, prod_output])
-                stitched_env = pd.concat([stitched_env, env_output])
+            
+            #trim off the values that are accounted for by subsequent iterations
+            output = output.iloc[1:-1,:]
+            loss_output = loss_output.loc[loss_output["time"]!=(next_injtime+step_size),:]
+            prod_output = prod_output.loc[prod_output["time"]!=(next_injtime+step_size),:]
+            env_output = env_output.iloc[1:-1,:]
+                    
+            stitched_output = pd.concat([stitched_output, output])
+            stitched_loss_rates = pd.concat([stitched_loss_rates, loss_output])
+            stitched_prod_rates = pd.concat([stitched_prod_rates, prod_output])
+            stitched_env = pd.concat([stitched_env, env_output])
         
             #remove temporary AtChem2 copy
             os.system(f"rm -r {new_atchem_path}")
         return (stitched_output,stitched_loss_rates,stitched_prod_rates,stitched_env)
-    
-    else:
-        raise Exception("""Both 'inject_targets' and 'spec_inject' arguments 
-                        must be provided or empty, not just one""")
+
