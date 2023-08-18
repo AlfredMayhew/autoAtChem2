@@ -40,3 +40,7 @@ def string_to_bool(string):
         return False
     else:
         raise Exception("Provided bool does not match True or False")
+
+def datetime_to_secs_since_midnight(datetime):
+    """Converts a datetime object to the time in seconds since midnight"""
+    return (datetime.hour*60*60) + (datetime.minute*60) + (datetime.second)
