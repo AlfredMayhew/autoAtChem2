@@ -5,6 +5,7 @@ from datetime import datetime
 import tempfile
 import numpy as np
 from .species_from_mechanism import return_all_species
+import warnings
 
 def wipe_file(file_path):
     open(file_path, 'w').close()
@@ -287,6 +288,11 @@ def _write_build_run_nox_constraint(nox_dict, atchem2_path, mech_path, day,
     a specified AtChem2 model including a constraint on total NOx, while NO 
     and NO2 are allowed to vary freely.
     """
+    warnings.warn("""WARNING. THIS NOX CONSTRAINT FEATURE IS EXPERIMENTAL,
+CHECK ANY MODEL OUTPUT THOROUGHLY TO ENSURE THE RESULTS ARE AS EXPECTED.
+THE NOX CONSTRAINT FEATURE IS ALSO VERY SLOW AS IT REQUIRES THE REPEATED
+BUILDING OF MANY INDIVIDUAL MODELS.""")
+    
     #dataframe to store model outputs
     stitched_output = pd.DataFrame(dtype=float)
     #dataframes to store rate outputs
@@ -355,7 +361,16 @@ def _write_build_run_nox_constraint(nox_dict, atchem2_path, mech_path, day,
             with open(new_atchem_path+"/model/configuration/initialConcentrations.config",
                       "w") as file:
                 file.writelines(init_lines)
-        
+        else: #just check that we have some NOx in the model if this is the first step
+            if not any([x in initial_concs.keys() for x in ["NO","NO2"]]):
+                #if there is not initial NO or NO2 specified, then split the
+                #given NOx value 50:50 between NO and NO2
+                half_val = nox_series[step_time]/2
+                
+                with open(new_atchem_path+"/model/configuration/initialConcentrations.config",
+                          "a") as file:
+                    file.write(f"NO2 {half_val}\nNO {half_val}")
+            
     
         #rewrite model parameters file to only run for the length of the 
         #injection of interest
@@ -424,6 +439,8 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
     e.g. {36000 : 1E10, 40000 : 2E10, 45000 : 3E10}
     The NOx concentrations will be linearly interpolated along all of the model
     timesteps.
+    WARNING. THIS NOX CONSTRAINT FEATURE IS EXPERIMENTAL AND ALSO VERY SLOW. 
+    CHECK ANY MODEL OUTPUT THOROUGHLY TO ENSURE THE RESULTS ARE AS EXPECTED.
     """
     if injection_dict and nox_dict:
         raise Exception("""Cannot run models using both species injections and 
