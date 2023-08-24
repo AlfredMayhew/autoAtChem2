@@ -249,9 +249,11 @@ def _write_build_run_injections(injection_dict, atchem2_path, mech_path, day,
         output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
                              index_col=0, delim_whitespace=True)
         loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
-                                  delim_whitespace=True)
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
-                                  delim_whitespace=True)  
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
                                  index_col=0, delim_whitespace=True)
         
@@ -386,9 +388,11 @@ BUILDING OF MANY INDIVIDUAL MODELS.""")
         output = pd.read_csv(f"{new_atchem_path}/model/output/speciesConcentrations.output", 
                              index_col=0, delim_whitespace=True)
         loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
-                                  delim_whitespace=True)
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
-                                  delim_whitespace=True)  
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
                                  index_col=0, delim_whitespace=True)
         
@@ -522,9 +526,11 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
         
         
         loss_output = pd.read_csv(f"{new_atchem_path}/model/output/lossRates.output", 
-                                  delim_whitespace=True)
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         prod_output = pd.read_csv(f"{new_atchem_path}/model/output/productionRates.output", 
-                                  delim_whitespace=True)
+                                  delim_whitespace=True,
+                                  keep_default_na=False)
         
     
         env_output = pd.read_csv(f"{new_atchem_path}/model/output/environmentVariables.output", 
