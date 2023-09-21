@@ -3,13 +3,14 @@ AtChem2 output files"""
 #imports
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib import cm
+from matplotlib import colormaps
 from autoAtChem2.read_output import rate_df
 from autoAtChem2.utilities import string_to_bool
 import sys
 import os
 import numpy as np
 from datetime import date
+import pandas as pd
 
 #read in arguments from command line
 args=sys.argv
@@ -91,18 +92,17 @@ p_rates = p_rates.sort_index(level=0).loc[start_num:end_num,:,:,:]
 #split the data into separate dataframes for each species for further processing
 spec_l_dfs = {}
 for s in l_rates.index.get_level_values(1).unique():
-    spec_l_dfs[s] = l_rates.loc[:,s,:,:].droplevel(1)
+    spec_l_dfs[s] = l_rates.loc[:,s,:,:]
 spec_p_dfs = {}
 for s in p_rates.index.get_level_values(1).unique():
-    spec_p_dfs[s] = p_rates.loc[:,s,:,:].droplevel(1)
+    spec_p_dfs[s] = p_rates.loc[:,s,:,:]
 
 #sort dataframe to get the top n reactions for each species, lumping the rest 
 #together into "other"
 def top_specs(df_dict):
     for s in df_dict.keys():
         #get df of the average rate of each reaction over the whole model
-        avg_series = df_dict[s].groupby(level=1).median().sort_values("rate",
-                                                                      ascending=False)["rate"]
+        avg_series = df_dict[s].groupby(level=1)["rate"].median().sort_values(ascending=False)
         #extract top n reactions for this species and then all of the other reactions
         topn_nos = avg_series.iloc[:top_n].index
         other_nos = avg_series.iloc[top_n:].index
@@ -120,7 +120,7 @@ def top_specs(df_dict):
                                    reaction = "Other").set_index('reactionNumber', 
                                                                  append=True)
         
-        df_dict[s] = topn_df.append(other_df).sort_index(level=0)
+        df_dict[s] = pd.concat([topn_df,other_df]).sort_index(level=0)
 
 top_specs(spec_l_dfs)
 top_specs(spec_p_dfs)
@@ -135,7 +135,7 @@ for s, df in spec_p_dfs.items():
 ###############################################################################       
 #Plotting
 pp=PdfPages("temp_rates_plot.pdf")
-cols=cm.get_cmap("tab20")
+cols=colormaps.get_cmap("tab20")
 
 
 #create title page for pdf output

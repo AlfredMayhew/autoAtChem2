@@ -95,7 +95,7 @@ def rate_df(file_path, species="ALL", drop_0=True, drop_net_0=True,
     #remove reactions where the analogous reverse reaction is also present where specified
     if drop_rev:
         #split reactions into columns of reatcants and products
-        split_rxns = rxns.str.split('=', 1, expand=True)
+        split_rxns = rxns.str.split('=', n=1, expand=True)
         split_rxns[0] = split_rxns[0].str.split("+")
         split_rxns[1] = split_rxns[1].str.split("+")
         
