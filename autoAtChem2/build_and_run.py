@@ -38,8 +38,11 @@ def tuple_list_to_config_file(in_tuple_list, filepath):
         
 def write_config(atchem2_path, initial_concs={}, spec_constrain={}, 
                  spec_constant={}, env_constrain={}, photo_constant = {},
-                 photo_constrain = {}, jfac_constrain = [(0,1)], 
-                 env_vals = {"TEMP":"298","PRESS":"1013","RH":"50","DILUTE":"NOTUSED"},
+                 photo_constrain = {}, 
+                 env_vals = {"TEMP":"298", "PRESS":"1013", "RH":"50",
+                             "H2O":"CALC", "DEC":"CALC", "BLHEIGHT":"NOTUSED",
+                             "DILUTE":"NOTUSED", "JFAC":"CONSTRAINED",
+                             "ROOF":"OPEN", "ASA":"NOTUSED"},
                  spec_output=[]):
     """Prepares model files in specified AtChem2 directory for building and running"""
     #initialConcentrations.config
@@ -75,33 +78,54 @@ def write_config(atchem2_path, initial_concs={}, spec_constrain={},
     
     
     #environmentVariables.config
+    default_env = {"TEMP":"298",
+                   "PRESS":"1013",
+                   "RH":"50",
+                   "H2O":"CALC",
+                   "DEC":"CALC",
+                   "BLHEIGHT":"NOTUSED",
+                   "DILUTE":"NOTUSED",
+                   "JFAC":"CONSTRAINED",
+                   "ROOF":"OPEN",
+                   "ASA":"NOTUSED"}
+    #fill in any missing environment variable values with defaults (if they 
+    # aren't supposed to be constrained)
+    for k,v in default_env.items():
+        if k not in env_vals.keys():
+            if k in env_constrain.keys():
+                env_vals[k] = "CONSTRAINED"
+            else:
+                env_vals[k] = v
+    
     env_var_lines=f"""1 TEMP			{env_vals['TEMP']}
     2 PRESS			{env_vals['PRESS']}
     3 RH			{env_vals['RH']}
-    4 H2O			CALC
-    5 DEC			CALC
-    6 BLHEIGHT		NOTUSED
+    4 H2O			{env_vals['H2O']}
+    5 DEC			{env_vals['DEC']}
+    6 BLHEIGHT		{env_vals['BLHEIGHT']}
     7 DILUTE		{env_vals['DILUTE']}
-    8 JFAC			CONSTRAINED
-    9 ROOF			OPEN
-    10 ASA          NOTUSED"""  
+    8 JFAC			{env_vals['JFAC']}
+    9 ROOF			{env_vals['ROOF']}
+    10 ASA          {env_vals['ASA']}"""  
+    
+    #append any custom environment variables
+    for i,k in enumerate([x for x in env_vals.keys() if x not in default_env.keys()]):
+        env_var_lines += f"\n{11+i} {k} {env_vals[k]}"
+    
     with open(f"{atchem2_path}/model/configuration/environmentVariables.config","w") as file:
         file.write(env_var_lines)
 
     #environment constraints
     for k,v in env_constrain.items():
         if env_vals[k] == "CONSTRAINED":
-            env_path = f"{atchem2_path}/model/constraints/environment/{k}"
+            if k != "JFAC":
+                env_path = f"{atchem2_path}/model/constraints/environment/{k}"
+            else:
+                env_path = f"{atchem2_path}/model/constraints/photolysis/{k}"
             tuple_list_to_config_file(v,env_path)
         else:
             raise Exception(f"Constraint provided for {k}, but value is set as {env_vals[k]} not 'CONSTRAINED'")   
-    
-    if jfac_constrain:
-        tuple_list_to_config_file(jfac_constrain,
-                                  f"{atchem2_path}/model/constraints/photolysis/JFAC")
-    else:
-        raise Exception("No JFAC constraint provided")
-    
+        
     #outputSpecies.config and outputRates.config
     list_to_config_file(spec_output,
                         f"{atchem2_path}/model/configuration/outputSpecies.config")
@@ -148,8 +172,8 @@ def _write_build_run_injections(injection_dict, atchem2_path, mech_path, day,
                                 month, year, t_start, t_end, step_size, 
                                 initial_concs, spec_constrain, 
                                 spec_constant, env_constrain, photo_constant, 
-                                photo_constrain, jfac_constrain, env_vals, 
-                                spec_output, lat, lon):
+                                photo_constrain, env_vals, spec_output, 
+                                lat, lon):
     """Called by the 'write_build_run' function to configures, build and run
     a specified AtChem2 model including instantaneous increases in 
     concentrations of certain species. 
@@ -190,7 +214,6 @@ def _write_build_run_injections(injection_dict, atchem2_path, mech_path, day,
                      spec_constrain=spec_constrain, spec_constant=spec_constant,
                      env_constrain=env_constrain, env_vals=env_vals, 
                      photo_constant = photo_constant, photo_constrain = photo_constrain,
-                     jfac_constrain = jfac_constrain,
                      spec_output=all_specs) #return all species for now (all needed to set the new start concs)
 
         
@@ -284,8 +307,8 @@ def _write_build_run_nox_constraint(nox_dict, atchem2_path, mech_path, day,
                                     month, year, t_start, t_end, step_size, 
                                     initial_concs, spec_constrain, 
                                     spec_constant, env_constrain, photo_constant, 
-                                    photo_constrain, jfac_constrain, 
-                                    env_vals, spec_output, lat, lon):
+                                    photo_constrain, env_vals, spec_output, 
+                                    lat, lon):
     """Called by the 'write_build_run' function to configures, build and run
     a specified AtChem2 model including a constraint on total NOx, while NO 
     and NO2 are allowed to vary freely.
@@ -335,7 +358,6 @@ BUILDING OF MANY INDIVIDUAL MODELS.""")
                      spec_constrain=spec_constrain, spec_constant=spec_constant,
                      env_constrain=env_constrain, env_vals=env_vals, 
                      photo_constant = photo_constant, photo_constrain = photo_constrain,
-                     jfac_constrain = jfac_constrain,
                      spec_output=all_specs) #return all species for now (all needed to set the new start concs)
 
         
@@ -419,9 +441,11 @@ BUILDING OF MANY INDIVIDUAL MODELS.""")
 def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end, 
                     step_size,initial_concs={}, spec_constrain={}, 
                     spec_constant={}, env_constrain={}, photo_constant={}, 
-                    photo_constrain={}, jfac_constrain = [(0,1)], 
-                    env_vals = {"TEMP":"298","PRESS":"1013",
-                                "RH":"50","DILUTE":"NOTUSED"},
+                    photo_constrain={}, 
+                    env_vals = {"TEMP":"298", "PRESS":"1013", "RH":"50",
+                                "H2O":"CALC", "DEC":"CALC", "BLHEIGHT":"NOTUSED",
+                                "DILUTE":"NOTUSED", "JFAC":"CONSTRAINED",
+                                "ROOF":"OPEN", "ASA":"NOTUSED"},
                     spec_output=[], lat=51.51, lon=0.31, injection_dict = {},
                     nox_dict = {}):
     """Configures, builds and runs a specified AtChem2 model. 
@@ -464,7 +488,6 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                                         spec_constrain = spec_constrain,
                                         spec_constant = spec_constant,
                                         env_constrain = env_constrain,
-                                        jfac_constrain = jfac_constrain,
                                         photo_constant = photo_constant, 
                                         photo_constrain = photo_constrain,
                                         env_vals = env_vals,
@@ -485,7 +508,6 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                                             spec_constrain = spec_constrain,
                                             spec_constant = spec_constant,
                                             env_constrain = env_constrain,
-                                            jfac_constrain = jfac_constrain,
                                             photo_constant = photo_constant, 
                                             photo_constrain = photo_constrain,
                                             env_vals = env_vals,
@@ -506,7 +528,6 @@ def write_build_run(atchem2_path, mech_path, day, month, year, t_start, t_end,
                      spec_constrain=spec_constrain, spec_constant=spec_constant,
                      env_constrain=env_constrain, env_vals=env_vals, 
                      photo_constant = photo_constant, photo_constrain = photo_constrain,
-                     jfac_constrain = jfac_constrain,
                      spec_output=spec_output)
         
         #change model parameters
