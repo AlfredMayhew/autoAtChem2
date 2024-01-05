@@ -18,11 +18,14 @@ def get_species_from_lines(mechanism_path):
     
     rxn_pattern = re.compile("%.*:(.*)=(.*);")
     
+    #pattern to match a species with or without a stoichiometric coefficient
+    spec_pattern = re.compile(r"^ *(\d*\.?\d*) *([a-zA-Z_].*) *$")
+    
     comps = set()
     for l in lines:
         match = rxn_pattern.match(l)
-        reacts = [x.strip(" ") for x in match[1].split("+")]
-        prods = [x.strip(" ") for x in match[2].split("+")]
+        reacts = [spec_pattern.match(x)[2] for x in match[1].split("+") if x.strip()]
+        prods = [spec_pattern.match(x)[2] for x in match[2].split("+") if x.strip()]
         
         for r in reacts:
             if r:
