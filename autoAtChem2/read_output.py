@@ -62,7 +62,7 @@ def rate_df(file_path, species="ALL", drop_0=True, drop_net_0=True,
         if species.casefold() != "ALL".casefold():
             if (error_for_non_species and (species not in unique_specs)):
                 raise Exception(f"""Provided species not present in model output: {species}""")
-            data = data.loc[:,species,:,:]
+            data = data.loc[:,[species],:,:]
     else:
         raise TypeError(f"""Invalid input of species. Species argument must be 
                         a list of species names, a string of the name of a 
